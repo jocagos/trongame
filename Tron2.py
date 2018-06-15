@@ -5,7 +5,7 @@ pygame.init()
 BLACK = (0, 0, 0)  # colores para usar en la ventana
 P1_COLOUR = (0, 255, 255)  # color de traza del jugador 1
 P2_COLOUR = (255, 0, 255)  # color de traza del jugador 2
-moves = {'up':(0, -2), 'down':(0, 2), 'left':(0, -2), 'right':(0, 2)} # diccionario utilitario
+moves = {'up':(-2, 0), 'down':(2, 0), 'left':(2, 0), 'right':(-2, 0)} # diccionario utilitario
 
 # distancia manhattan entre dos nodos
 def manhattan(nodeL, nodeR):
@@ -24,10 +24,19 @@ class Queue: # Clase para acceder facilmente a collections.deque
     def pop(self): # remover y devolver el elemento en el frente
         return self.elements.popleft()
 
+    def front(self): # ver el primero en la fila
+        node = self.elements.popleft()
+        self.elements.appendleft(node)
+        return node
+
     def last(self): # ver el último nodo en la fila
         node = self.elements.pop() # lo sacamos
         self.elements.append(node) # lo metemos de vuelta
         return node # lo devolvemos
+
+    # Limpia la cola
+    def clear(self):
+        self.elements.clear()
 
 # Clase Cola de Prioridad (usa heap de Python)
 class PriorityQueue:
@@ -65,6 +74,7 @@ class Player:
             self.yTarget = height // 2
             self.pathTarget = Queue() # como el camino a seguir para derrotar al humano
             self.difficulty = 2 # random.randint(1, 2) # dificultad a usar
+            self.dist = 300 # Distancia dummy
         self.speed = 1  # velocidad del jugador
         self.boost = False  # si tiene nitro
         self.start_boost = time.time()  # para controlar la medida del nitro
@@ -89,16 +99,17 @@ class Player:
         elif p2.direction == moves['down']:
             self.xTarget -= 2
         # Uso de la IA buscando caminos
-        if not self.pathTarget.empty():
-            self.pathTarget.push((self.xTarget, self.yTarget))
+        # if not self.pathTarget.empty():
+        #     self.pathTarget.push((self.xTarget, self.yTarget))
+        # else:
+        if self.difficulty == 1:
+            self.bfs()
         else:
-            if self.difficulty == 1:
-                self.bfs()
-            else:
-                self.aSearch()
+            self.aSearch()
 
     # metodo para revisar la direccion de un nodo respecto a otro
     def checkDir(self, target):
+        distX, distY = abs(self.x - target[0]), abs(self.y - target[1])
         if self.x < target[0]:
             return moves['right']
         if self.x > target[0]:
@@ -111,16 +122,17 @@ class Player:
     # metodo mover para evitar el privado '__move__', como una 'API' para la IA
     def move(self):
         if self.isHuman: # Si es humano que siga normal
-            past = (self.x, self.y) 
+            past = (self.x, self.y-offset) 
             self.__move__() # nos movemos normal
             usedBoard[past[0]][past[1]] = True
         else: # si es IA
             if not self.pathTarget.empty(): # mientras haya direcciones a seguir en el camino
                 self.direction = self.checkDir(self.pathTarget.pop()) # sigamoslas
-            
+            if self.boosts > 0 and not self.boost:
+                self.__boost__()
             self.updateTarget() # actualiza las direcciones y la cola
             # importante! primero calculamos la direccion y luego marcamos el nodo como usado
-            past = (self.x, self.y) 
+            past = (self.x, self.y-offset) 
             self.__move__() # nos movemos normal
             usedBoard[past[0]][past[1]] = True
 
@@ -143,14 +155,14 @@ class Player:
     # calcular los vecinos de un nodo dado un tablero prueba
     def computeNeighbors(self, coords, testBoard):
         neighbors = [] # vacía por las dudas
-        # Si x > 0 y está vacío el tablero, vamos a la izquierda
-        if coords[0] > 1:
-            if not usedBoard[coords[0] - 2][coords[1]] and not testBoard[coords[0] - 2][coords[1]]:
-                neighbors.append( (coords[0] - 2, coords[1]) )
         # Si y > 62 y está vacío el tablero, vamos arriba
         if coords[1] > 1:
             if not usedBoard[coords[0]][coords[1] - 2] and not testBoard[coords[0]][coords[1] - 2]:
                 neighbors.append( (coords[0], coords[1] - 2) )
+        # Si x > 0 y está vacío el tablero, vamos a la izquierda
+        if coords[0] > 1:
+            if not usedBoard[coords[0] - 2][coords[1]] and not testBoard[coords[0] - 2][coords[1]]:
+                neighbors.append( (coords[0] - 2, coords[1]) )
         # Si x < width y está vacío el tablero, vamos a la derecha
         if coords[0] < width - 4:
             if not usedBoard[coords[0] + 2][coords[1]] and not testBoard[coords[0] + 2][coords[1]]:
@@ -185,6 +197,7 @@ class Player:
                         neighbors.push(node, priority) # lo metemos en el heap
                         pathGenerated[node] = current # y en el camino
         
+        self.pathTarget.clear()
         for key in pathGenerated: # metemos el camino
             self.pathTarget.push(key) # para que lo visitemos
 
@@ -215,7 +228,12 @@ def new_game():
 
 width, height = 600, 660  # dimensiones de la ventana
 offset = height - width  # espacio vertical extra
-usedBoard = [[False] * width for _ in range(height-offset)] # para uso con la BFS y la A*
+usedBoard = [] # para uso con la BFS y la A*
+for i in range(width):
+    usedBoard.append([])
+    for j in range(height-offset):
+        usedBoard[i].append(False)
+
 screen = pygame.display.set_mode((width, height))  # crea la ventana
 pygame.display.set_caption("Tron")  # coloca el titulo del juego
 
@@ -294,7 +312,6 @@ while not done:
                     player_score[1] += 1
                 else:
                     player_score[0] += 1
-                usedBoard = [[False] * width for _ in range(height-offset)] # para uso con la BFS y la A*
                 new = True
                 new_p1, new_p2 = new_game()
                 objects = [new_p1, new_p2]
@@ -306,11 +323,27 @@ while not done:
         obj.__draw__()
         obj.move()
 
+    if new:
+        objects = list()  # lista de todosl os jugadores
+        path = list()  # lista de todos los caminos ya recorridos
+        p1 = Player((-2, 0))  # crea IA
+        p2 = Player((2, 0), True) # crea al jugador
+        objects.append(p1) # metemos la IA
+        path.append((p1.rect, '1')) # metemos su objeto en el camino
+        objects.append(p2) # ahora ocn el jugador
+        path.append((p2.rect, '2'))
+        usedBoard = [] # para uso con la BFS y la A*
+        for i in range(width):
+            usedBoard.append([])
+            for j in range(height-offset):
+                usedBoard[i].append(False)
+
+        new = False
     for r in path:
-        if new is True:  # vacía el camino, evita glitches
-            path = []
-            new = False
-            break
+    #     if new is True:  # vacía el camino, evita glitches
+    #         path = []
+    #         new = False
+    #         break
         if r[1] == '1':
             pygame.draw.rect(screen, P1_COLOUR, r[0], 0)
         else:
