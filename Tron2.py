@@ -64,7 +64,7 @@ class Player:
             self.xTarget = 50 # además de valores especiales para seguir su objetivo y crear un camino
             self.yTarget = height // 2
             self.pathTarget = Queue() # como el camino a seguir para derrotar al humano
-            self.difficulty = random.randint(1, 2) # dificultad a usar
+            self.difficulty = 2 # random.randint(1, 2) # dificultad a usar
         self.speed = 1  # velocidad del jugador
         self.boost = False  # si tiene nitro
         self.start_boost = time.time()  # para controlar la medida del nitro
@@ -89,10 +89,13 @@ class Player:
         elif p2.direction == moves['down']:
             self.xTarget -= 2
         # Uso de la IA buscando caminos
-        if self.difficulty == 1:
-            self.bfs()
+        if not self.pathTarget.empty():
+            self.pathTarget.push((self.xTarget, self.yTarget))
         else:
-            self.aSearch()
+            if self.difficulty == 1:
+                self.bfs()
+            else:
+                self.aSearch()
 
     # metodo para revisar la direccion de un nodo respecto a otro
     def checkDir(self, target):
@@ -141,21 +144,22 @@ class Player:
     def computeNeighbors(self, coords, testBoard):
         neighbors = [] # vacía por las dudas
         # Si x > 0 y está vacío el tablero, vamos a la izquierda
-        if coords[0] > 0:
-            if not usedBoard[coords[0] - 1][coords[1]] and not testBoard[coords[0] - 1][coords[1]]:
-                neighbors.append( (coords[0] - 1, coords[1]) )
-        # Si y > 0 y está vacío el tablero, vamos arriba
-        if coords[1] > 0:
-            if not usedBoard[coords[0]][coords[1] - 1] and not testBoard[coords[0]][coords[1] - 1]:
-                neighbors.append( (coords[0], coords[1] - 1) )
+        if coords[0] > 1:
+            if not usedBoard[coords[0] - 2][coords[1]] and not testBoard[coords[0] - 2][coords[1]]:
+                neighbors.append( (coords[0] - 2, coords[1]) )
+        # Si y > 62 y está vacío el tablero, vamos arriba
+        if coords[1] > 1:
+            if not usedBoard[coords[0]][coords[1] - 2] and not testBoard[coords[0]][coords[1] - 2]:
+                neighbors.append( (coords[0], coords[1] - 2) )
         # Si x < width y está vacío el tablero, vamos a la derecha
-        if coords[0] < width:
-            if not usedBoard[coords[0] + 1][coords[1]] and not testBoard[coords[0] + 1][coords[1]]:
-                neighbors.append( (coords[0] + 1, coords[1]) )
+        if coords[0] < width - 4:
+            if not usedBoard[coords[0] + 2][coords[1]] and not testBoard[coords[0] + 2][coords[1]]:
+                neighbors.append( (coords[0] + 2, coords[1]) )
         # Si y < height y está vacío el tablero, vamos abajo
-        if coords[1] < height:
-            if not usedBoard[coords[0]][coords[1] + 1] and not testBoard[coords[0]][coords[1] + 1]:
-                neighbors.append( (coords[0], coords[1] + 1) )
+        if coords[1] < height - 4 - offset:
+            if not usedBoard[coords[0]][coords[1] + 2] and not testBoard[coords[0]][coords[1] + 2]:
+                neighbors.append( (coords[0], coords[1] + 2) )
+        return neighbors
 
     # Busqueda de camino con A*
     def aSearch(self):
@@ -174,7 +178,7 @@ class Player:
             frontier = self.computeNeighbors(current, testBoard) # Si no, le sacamos los vecinos
             if frontier: # si no está vacía
                 for node in frontier: # Y para cada uno
-                    newCost = costUpTo[node] + 1 # Costo de viajar al siguiente es 1
+                    newCost = costUpTo[current] + 1 # Costo de viajar al siguiente es 1
                     if node not in costUpTo or newCost < costUpTo[node]: # si el nodo no ha sido visitado o el costo es menor
                         costUpTo[node] = newCost # vamos a recorrerlo y añadirlo
                         priority = newCost + manhattan(node, (self.xTarget, self.yTarget)) # creamos su prioridad
@@ -195,7 +199,7 @@ class Player:
             self.pathTarget.push(current)
             # Si llegamos al objetivo, terminar y salir
             if current[0] == self.xTarget and current[1] == self.yTarget:
-                return
+                break
             testBoard[current[0]][current[1]] = True # Marcar como usado
             frontier = self.computeNeighbors(current, testBoard) # Obtener vecinos del nodo actual
             if frontier: # actualizar la cola
@@ -204,14 +208,14 @@ class Player:
 
 # para crear un nuevo juego
 def new_game():
-    new_p1 = Player((2, 0)) # IA de dificultad aleatoria
-    new_p2 = Player((-2, 0), True) # Jugador
+    new_p1 = Player((-2, 0)) # IA de dificultad aleatoria
+    new_p2 = Player((2, 0), True) # Jugador
     return new_p1, new_p2
 
 
 width, height = 600, 660  # dimensiones de la ventana
-usedBoard = [[False] * width for _ in range(height)] # para uso con la BFS y la A*
 offset = height - width  # espacio vertical extra
+usedBoard = [[False] * width for _ in range(height-offset)] # para uso con la BFS y la A*
 screen = pygame.display.set_mode((width, height))  # crea la ventana
 pygame.display.set_caption("Tron")  # coloca el titulo del juego
 
@@ -222,8 +226,8 @@ check_time = time.time()  # para revisar colisiones en tiempo y forma
 
 objects = list()  # lista de todosl os jugadores
 path = list()  # lista de todos los caminos ya recorridos
-p1 = Player((2, 0))  # crea IA
-p2 = Player((-2, 0), True) # crea al jugador
+p1 = Player((-2, 0))  # crea IA
+p2 = Player((2, 0), True) # crea al jugador
 objects.append(p1) # metemos la IA
 path.append((p1.rect, '1')) # metemos su objeto en el camino
 objects.append(p2) # ahora ocn el jugador
@@ -290,7 +294,7 @@ while not done:
                     player_score[1] += 1
                 else:
                     player_score[0] += 1
-
+                usedBoard = [[False] * width for _ in range(height-offset)] # para uso con la BFS y la A*
                 new = True
                 new_p1, new_p2 = new_game()
                 objects = [new_p1, new_p2]
@@ -313,8 +317,6 @@ while not done:
             pygame.draw.rect(screen, P2_COLOUR, r[0], 0)
 
     # muestra las puntuaciones
-    if player_score[0] > 1:
-        done = True
     score_text = font.render('{0} : {1}'.format(player_score[0], player_score[1]), 1, (255, 153, 51))
     score_text_pos = score_text.get_rect()
     score_text_pos.centerx = width // 2
